@@ -15,13 +15,13 @@ const POINTS_MAP = {
 };
 
 // Preset colors for initial drivers (simulating real F1 teams)
-const DRIVER_COLORS = {
-    'Retree': 'strip-retree',   // Mercedes teal
-    'Руля': 'strip-rulya',       // Ferrari red
-    'Лютый': 'strip-lyutyy',     // Red Bull blue
-    'Вайлист': 'strip-vaylist',   // McLaren orange
-    'Брикс': 'strip-briks',     // Aston Martin green
-    'Козак': 'strip-kozak'       // Alpine blue
+const PRESET_DRIVER_COLORS = {
+    'Retree': '#00d2be',   // Mercedes teal
+    'Руля': '#e10600',       // Ferrari red
+    'Лютый': '#1634ff',     // Red Bull blue
+    'Вайлист': '#ff9000',   // McLaren orange
+    'Брикс': '#005a30',     // Aston Martin green
+    'Козак': '#4b92ff'       // Alpine blue
 };
 
 // Initial Seed Data (Excel Reference State)
@@ -113,6 +113,7 @@ function initFirebase() {
                     updateConnectionUI(true);
                 } else {
                     isFirebaseConnected = false;
+                    // If it was already working and then disconnected, show connecting
                     updateConnectionUI(false);
                 }
             });
@@ -130,6 +131,10 @@ function initFirebase() {
                     database.ref('/f1_standings').set(state);
                 }
                 renderAll();
+            }, (error) => {
+                console.error("Firebase read cancelled/failed:", error);
+                isFirebaseConnected = false;
+                updateConnectionUI(false, error.message);
             });
             
         } else {
@@ -138,13 +143,13 @@ function initFirebase() {
     } catch (e) {
         console.error("Firebase initialization failed, falling back to local mode:", e);
         isFirebaseInitialized = false;
-        updateConnectionUI(false);
+        updateConnectionUI(false, e.message);
         loadLocalFallback();
     }
 }
 
-// Update connection state elements in UI
-function updateConnectionUI(online) {
+// Update connection state elements in UI with error messages
+function updateConnectionUI(online, errorMessage = '') {
     const banner = document.getElementById('db-status-banner');
     const text = document.getElementById('db-status-text');
     const badge = document.getElementById('firebase-connection-status-badge');
@@ -158,17 +163,39 @@ function updateConnectionUI(online) {
     } else {
         if (!isFirebaseInitialized) {
             banner.className = 'db-status-banner banner-offline';
-            text.textContent = 'Сбой SDK: Firebase не подключен. Работа в автономном режиме.';
+            text.textContent = `Сбой SDK: Firebase не подключен. Работа в автономном режиме. (${errorMessage || 'Неизвестная ошибка'})`;
             badge.textContent = 'ОШИБКА SDK';
             badge.className = 'badge badge-dsq';
         } else {
-            banner.className = 'db-status-banner banner-connecting';
-            text.textContent = 'Соединение потеряно. Попытка переподключения... (Данные кэшируются локально)';
-            badge.textContent = 'АВТОНОМНО';
-            badge.className = 'badge badge-dnf';
+            if (errorMessage) {
+                banner.className = 'db-status-banner banner-offline';
+                text.textContent = `Ошибка Firebase: ${errorMessage}. Проверьте правила доступа или AdBlock/Brave Shields.`;
+                badge.textContent = 'ОШИБКА БД';
+                badge.className = 'badge badge-dsq';
+            } else {
+                banner.className = 'db-status-banner banner-connecting';
+                text.textContent = 'Соединение потеряно. Попытка переподключения... (Данные кэшируются локально)';
+                badge.textContent = 'АВТОНОМНО';
+                badge.className = 'badge badge-dnf';
+            }
         }
     }
 }
+
+// Global browser error logger for debugging CORS / AdBlockers
+window.addEventListener('error', (event) => {
+    const banner = document.getElementById('db-status-banner');
+    const text = document.getElementById('db-status-text');
+    if (banner && text && event.message && 
+       (event.message.toLowerCase().includes('firebase') || 
+        event.message.toLowerCase().includes('cors') || 
+        event.message.toLowerCase().includes('blocked') || 
+        event.message.toLowerCase().includes('database'))) {
+        banner.className = 'db-status-banner banner-offline';
+        text.textContent = `Браузер заблокировал запрос: ${event.message}. (Отключите AdBlock / Brave Shields для этого сайта)`;
+    }
+});
+
 
 // Fallback to localStorage if Firebase script fails to load
 function loadLocalFallback() {
@@ -204,6 +231,25 @@ function ensureSchema(dataObj) {
             id: race.id || 'race_unknown',
             name: race.name || race.id || 'Unknown',
             emoji: race.emoji || '🏁'
+        };
+    });
+    
+    // Adapt drivers to ensure they have color, team, and teamTag
+    cleanData.drivers = cleanData.drivers.map(driver => {
+        const id = driver.id || driver.name || 'unknown';
+        const name = driver.name || driver.id || 'Unknown';
+        
+        let color = driver.color;
+        if (!color) {
+            color = PRESET_DRIVER_COLORS[name] || '#94a3b8';
+        }
+        
+        return {
+            id: id,
+            name: name,
+            color: color,
+            team: driver.team || '',
+            teamTag: driver.teamTag || ''
         };
     });
     
@@ -477,11 +523,15 @@ function renderLeaderboard() {
         const driverTd = document.createElement('td');
         driverTd.className = 'driver-col';
         
-        const stripColorClass = DRIVER_COLORS[driver.name] || 'strip-default';
+        const stripColor = driver.color || '#94a3b8';
+        const teamTagHtml = driver.teamTag ? 
+            `<span class="team-tag-badge" style="--team-color: ${stripColor}" title="${driver.team || ''}">${driver.teamTag}</span>` : '';
+        
         driverTd.innerHTML = `
             <div class="driver-cell-container">
-                <div class="driver-strip ${stripColorClass}"></div>
+                <div class="driver-strip" style="background-color: ${stripColor}"></div>
                 <span>${driver.name}</span>
+                ${teamTagHtml}
             </div>
         `;
         row.appendChild(driverTd);
@@ -782,7 +832,14 @@ function postResults() {
 // Action: Add Driver
 function addDriver() {
     const nameInput = document.getElementById('new-driver-name');
+    const teamInput = document.getElementById('new-driver-team');
+    const tagInput = document.getElementById('new-driver-tag');
+    const colorInput = document.getElementById('new-driver-color');
+    
     const name = nameInput.value.trim();
+    const team = teamInput.value.trim();
+    const teamTag = tagInput.value.trim().toUpperCase();
+    const color = colorInput.value;
     
     if (!name) {
         alert('Имя пилота не может быть пустым.');
@@ -796,19 +853,22 @@ function addDriver() {
     }
     
     const driverId = name;
-    state.drivers.push({ id: driverId, name: name });
-    
-    if (!DRIVER_COLORS[name]) {
-        const colors = ['strip-retree', 'strip-rulya', 'strip-lyutyy', 'strip-vaylist', 'strip-briks', 'strip-kozak'];
-        const randomColor = colors[Math.floor(Math.random() * colors.length)];
-        DRIVER_COLORS[name] = randomColor;
-    }
+    state.drivers.push({
+        id: driverId,
+        name: name,
+        team: team,
+        teamTag: teamTag,
+        color: color
+    });
     
     saveState();
     loadActiveFormResults();
     renderAll();
     
     nameInput.value = '';
+    teamInput.value = '';
+    tagInput.value = '';
+    // Color picker stays at current value
 }
 
 // Action: Delete Driver

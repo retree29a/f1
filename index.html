@@ -110,10 +110,16 @@
 
                 <!-- Driver Management -->
                 <div class="form-group">
-                    <label for="new-driver-name">Добавить пилота</label>
-                    <div class="input-with-button">
-                        <input type="text" id="new-driver-name" placeholder="Имя нового пилота...">
-                        <button id="btn-add-driver" class="btn btn-primary">Добавить</button>
+                    <label>Добавить пилота</label>
+                    <div class="driver-inputs-grid">
+                        <input type="text" id="new-driver-name" placeholder="Имя пилота" style="grid-column: span 2;">
+                        <input type="text" id="new-driver-team" placeholder="Команда (например: Ferrari)">
+                        <input type="text" id="new-driver-tag" placeholder="Тег (например: FER)" maxlength="4" style="text-transform: uppercase;">
+                    </div>
+                    <div class="color-picker-row" style="margin-top: 0.75rem; display: flex; align-items: center; gap: 0.75rem;">
+                        <label for="new-driver-color" style="margin-bottom: 0; white-space: nowrap; font-size: 0.8rem; font-family: var(--font-orbitron); color: var(--text-muted); text-transform: uppercase;">Цвет пилота:</label>
+                        <input type="color" id="new-driver-color" value="#e10600">
+                        <button id="btn-add-driver" class="btn btn-primary btn-sm" style="margin-left: auto; padding: 0.5rem 1.2rem;">Добавить</button>
                     </div>
                 </div>
 

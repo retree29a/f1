@@ -764,4 +764,45 @@ main {
     border-bottom: 2px solid var(--border-color);
 }
 
+/* Multi-field inputs grid for driver creation */
+.driver-inputs-grid {
+    display: grid;
+    grid-template-columns: 1.3fr 0.7fr;
+    gap: 0.5rem;
+}
 
+/* Custom color picker style */
+.color-picker-row input[type="color"] {
+    border: 1px solid var(--border-color);
+    background: none;
+    width: 50px;
+    height: 30px;
+    border-radius: 4px;
+    cursor: pointer;
+    padding: 0;
+    outline: none;
+    transition: var(--transition);
+}
+
+.color-picker-row input[type="color"]:hover {
+    border-color: var(--border-color-hover);
+    box-shadow: 0 0 5px rgba(255, 255, 255, 0.1);
+}
+
+/* Styled Team Tag Badge on Leaderboard */
+.team-tag-badge {
+    font-family: var(--font-orbitron);
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    background-color: rgba(255, 255, 255, 0.04);
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    border-left: 3px solid var(--team-color, var(--text-muted));
+    margin-left: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: inline-block;
+    vertical-align: middle;
+    box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.2);
+}
