@@ -653,7 +653,7 @@ function renderResultsEntryForm() {
         const card = document.createElement('div');
         card.className = 'driver-entry-card';
         
-        const stripColorClass = DRIVER_COLORS[driver.name] || 'strip-default';
+        const stripColor = driver.color || '#94a3b8';
         
         let posOptionsHtml = `
             <option value="NONE" ${entry.position === 'NONE' ? 'selected' : ''}>Нет результата</option>
@@ -667,7 +667,7 @@ function renderResultsEntryForm() {
         
         card.innerHTML = `
             <div class="entry-name">
-                <div class="driver-strip ${stripColorClass}"></div>
+                <div class="driver-strip" style="background-color: ${stripColor}"></div>
                 <span>${driver.name}</span>
             </div>
             <div class="entry-pos-select">
