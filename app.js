@@ -1,4 +1,4 @@
-// Formula 1 Standings App Logic - GitHub Pages & Admin Auth Enabled
+// Result Logger - F1 League Standings App Logic (Firebase Synced)
 
 // F1 Points System Reference
 const POINTS_MAP = {
@@ -34,7 +34,10 @@ const DEFAULT_STATE = {
         { id: 'Брикс', name: 'Брикс' },
         { id: 'Козак', name: 'Козак' }
     ],
-    races: ['Гонка 1', 'Гонка 2'],
+    races: [
+        { id: 'Гонка 1', name: 'Гонка 1', emoji: '🏁' },
+        { id: 'Гонка 2', name: 'Гонка 2', emoji: '🏁' }
+    ],
     results: {
         'Гонка 1': {
             'Retree': '1',
@@ -57,8 +60,10 @@ const DEFAULT_STATE = {
 
 // Default Admin Password SHA-256 Hash
 // Default plain text password is: f1admin
-// You can generate your own hash and replace it here.
 const ADMIN_PASSWORD_HASH = "19b32eb6c57fd5dfcebaa150ebe11b82f2d8645ebb52a51c313533b458eda033";
+
+// Firebase Realtime Database Endpoint (Public Read/Write)
+const FIREBASE_DB_URL = "https://f1lc-afbbc-default-rtdb.asia-southeast1.firebasedatabase.app/";
 
 // Application State
 let state = {
@@ -67,28 +72,186 @@ let state = {
     results: {}
 };
 
+// Database references
+let database = null;
+let isFirebaseConnected = false;
+let isFirebaseInitialized = false;
+
 // Temporary state for the active Results Entry Form
 let activeFormResults = {};
 
 // Initialize Application
 document.addEventListener('DOMContentLoaded', async () => {
-    await initAuth();
-    await loadState();
+    initAuth();
     initUI();
-    renderAll();
+    initFirebase();
 });
+
+// ==========================================================================
+// Firebase Integration
+// ==========================================================================
+
+function initFirebase() {
+    const banner = document.getElementById('db-status-banner');
+    const text = document.getElementById('db-status-text');
+    const dbUrlText = document.getElementById('firebase-db-url-text');
+    
+    dbUrlText.textContent = FIREBASE_DB_URL;
+    
+    try {
+        if (typeof firebase !== 'undefined') {
+            // Initialize Firebase App with only the databaseURL
+            firebase.initializeApp({ databaseURL: FIREBASE_DB_URL });
+            database = firebase.database();
+            isFirebaseInitialized = true;
+            
+            // Monitor connection status
+            const connectedRef = database.ref(".info/connected");
+            connectedRef.on("value", (snap) => {
+                if (snap.val() === true) {
+                    isFirebaseConnected = true;
+                    updateConnectionUI(true);
+                } else {
+                    isFirebaseConnected = false;
+                    updateConnectionUI(false);
+                }
+            });
+            
+            // Subscribe to database path '/f1_standings' for real-time updates
+            database.ref('/f1_standings').on('value', (snapshot) => {
+                const dbData = snapshot.val();
+                if (dbData) {
+                    state = ensureSchema(dbData);
+                    console.log('Real-time database sync: state loaded from Firebase.');
+                } else {
+                    // Seed Firebase if it is completely empty
+                    console.log('Firebase node is empty. Initializing with default seed data...');
+                    state = ensureSchema(JSON.parse(JSON.stringify(DEFAULT_STATE)));
+                    database.ref('/f1_standings').set(state);
+                }
+                renderAll();
+            });
+            
+        } else {
+            throw new Error("Firebase SDK script files not loaded.");
+        }
+    } catch (e) {
+        console.error("Firebase initialization failed, falling back to local mode:", e);
+        isFirebaseInitialized = false;
+        updateConnectionUI(false);
+        loadLocalFallback();
+    }
+}
+
+// Update connection state elements in UI
+function updateConnectionUI(online) {
+    const banner = document.getElementById('db-status-banner');
+    const text = document.getElementById('db-status-text');
+    const badge = document.getElementById('firebase-connection-status-badge');
+    
+    if (online) {
+        banner.className = 'db-status-banner banner-online';
+        badge.textContent = 'В СЕТИ';
+        badge.className = 'badge badge-pts';
+        badge.style.backgroundColor = 'var(--success)';
+        badge.style.color = '#000000';
+    } else {
+        if (!isFirebaseInitialized) {
+            banner.className = 'db-status-banner banner-offline';
+            text.textContent = 'Сбой SDK: Firebase не подключен. Работа в автономном режиме.';
+            badge.textContent = 'ОШИБКА SDK';
+            badge.className = 'badge badge-dsq';
+        } else {
+            banner.className = 'db-status-banner banner-connecting';
+            text.textContent = 'Соединение потеряно. Попытка переподключения... (Данные кэшируются локально)';
+            badge.textContent = 'АВТОНОМНО';
+            badge.className = 'badge badge-dnf';
+        }
+    }
+}
+
+// Fallback to localStorage if Firebase script fails to load
+function loadLocalFallback() {
+    const savedState = localStorage.getItem('f1_standings_state');
+    if (savedState) {
+        try {
+            state = ensureSchema(JSON.parse(savedState));
+        } catch (e) {
+            console.error('Error loading fallback local state, reverting to seed:', e);
+            state = ensureSchema(JSON.parse(JSON.stringify(DEFAULT_STATE)));
+        }
+    } else {
+        state = ensureSchema(JSON.parse(JSON.stringify(DEFAULT_STATE)));
+    }
+    renderAll();
+}
+
+// Convert schema if loaded database uses strings for races (backward compatibility)
+function ensureSchema(dataObj) {
+    if (!dataObj) return DEFAULT_STATE;
+    
+    const cleanData = { ...dataObj };
+    if (!cleanData.drivers) cleanData.drivers = [];
+    if (!cleanData.races) cleanData.races = [];
+    if (!cleanData.results) cleanData.results = {};
+    
+    // Adapt races array elements to object structures if they are strings
+    cleanData.races = cleanData.races.map(race => {
+        if (typeof race === 'string') {
+            return { id: race, name: race, emoji: '🏁' };
+        }
+        return {
+            id: race.id || 'race_unknown',
+            name: race.name || race.id || 'Unknown',
+            emoji: race.emoji || '🏁'
+        };
+    });
+    
+    return cleanData;
+}
+
+// Save state: Pushes to Firebase if initialized, and always saves a local backup
+function saveState() {
+    // Save backup to Local Storage
+    localStorage.setItem('f1_standings_state', JSON.stringify(state));
+    
+    // Push to Firebase Realtime Database (which handles offline cache automatically)
+    if (isFirebaseInitialized && database) {
+        database.ref('/f1_standings').set(state)
+            .then(() => {
+                console.log('Firebase synced successfully.');
+            })
+            .catch(e => {
+                console.error('Firebase sync error (changes will sync when online):', e);
+            });
+    }
+}
+
+// Reset data in the database
+function resetToDefault() {
+    if (confirm('Вы уверены, что хотите сбросить ВСЮ базу данных в Firebase до исходного состояния из Excel? Это изменит таблицу для всех пользователей.')) {
+        state = ensureSchema(JSON.parse(JSON.stringify(DEFAULT_STATE)));
+        saveState();
+        
+        const raceSelector = document.getElementById('post-race-select');
+        if (raceSelector && state.races.length > 0) {
+            raceSelector.value = state.races[0].id;
+        }
+        
+        loadActiveFormResults();
+        renderAll();
+    }
+}
 
 // ==========================================================================
 // Authentication System
 // ==========================================================================
 
-// Initialize Auth State from sessionStorage
-async function initAuth() {
+function initAuth() {
     const isLoggedIn = sessionStorage.getItem('f1_admin_logged_in') === 'true';
     setAdminMode(isLoggedIn);
 }
 
-// Set UI elements display based on login status
 function setAdminMode(loggedIn) {
     if (loggedIn) {
         document.body.classList.add('admin-mode');
@@ -103,7 +266,6 @@ function setAdminMode(loggedIn) {
     }
 }
 
-// Convert string to SHA-256 hex string
 async function sha256(message) {
     const msgBuffer = new TextEncoder().encode(message);
     const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
@@ -111,7 +273,6 @@ async function sha256(message) {
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// Handle login attempt
 async function attemptLogin() {
     const passwordInput = document.getElementById('admin-password');
     const errorMsg = document.getElementById('login-error');
@@ -151,87 +312,19 @@ function logout() {
 }
 
 // ==========================================================================
-// Data Management & Storage
-// ==========================================================================
-
-// Load state: Fetches database.json from server, falling back to localStorage
-async function loadState() {
-    // Attempt to load official database.json (served statically on GitHub Pages)
-    try {
-        // Append unique timestamp query parameter to bypass browser caching
-        const response = await fetch(`./database.json?t=${new Date().getTime()}`);
-        if (response.ok) {
-            const serverData = await response.json();
-            if (serverData.drivers && serverData.races && serverData.results) {
-                state = serverData;
-                console.log('Standings loaded successfully from server (database.json).');
-                return;
-            }
-        }
-    } catch (e) {
-        console.warn('Could not fetch database.json from server (this is normal when running locally without committing it first). Checking local storage...');
-    }
-
-    // Fallback: Local Storage
-    const savedState = localStorage.getItem('f1_standings_state');
-    if (savedState) {
-        try {
-            state = JSON.parse(savedState);
-            if (!state.drivers || !state.races || !state.results) {
-                throw new Error('Invalid state structure');
-            }
-        } catch (e) {
-            console.error('Error loading saved state, reverting to default seed data:', e);
-            state = JSON.parse(JSON.stringify(DEFAULT_STATE));
-        }
-    } else {
-        // Fallback: Excel Seed Data
-        state = JSON.parse(JSON.stringify(DEFAULT_STATE));
-    }
-}
-
-// Save state to localStorage (local working copy)
-function saveState() {
-    localStorage.setItem('f1_standings_state', JSON.stringify(state));
-}
-
-// Reset state to initial Excel data
-function resetToDefault() {
-    if (confirm('Вы уверены, что хотите сбросить все локальные данные до состояния из Excel? Все неопубликованные изменения будут стёрты.')) {
-        state = JSON.parse(JSON.stringify(DEFAULT_STATE));
-        saveState();
-        
-        // Reset selector
-        const raceSelector = document.getElementById('post-race-select');
-        if (raceSelector && state.races.length > 0) {
-            raceSelector.value = state.races[0];
-        }
-        
-        loadActiveFormResults();
-        renderAll();
-    }
-}
-
-// ==========================================================================
 // Standing Calculations
 // ==========================================================================
 
-// Parse result string (e.g., "2ПК", "3П", "4К", "DSQ", "DNF", "1")
 function parseResult(resultStr) {
     if (!resultStr) {
         return { position: '', pole: false, fastestLap: false, points: 0 };
     }
 
     const cleanStr = String(resultStr).trim().toUpperCase();
-    
-    // Check modifiers: Russian 'П'/'К', English 'P'/'K'
     const pole = cleanStr.includes('П') || cleanStr.includes('P');
     const fastestLap = cleanStr.includes('К') || cleanStr.includes('K');
-    
-    // Remove modifiers to get raw position
     let posStr = cleanStr.replace(/[ПКPK]/g, '');
     
-    // Get points
     let points = 0;
     if (POINTS_MAP[posStr]) {
         points += POINTS_MAP[posStr];
@@ -240,15 +333,9 @@ function parseResult(resultStr) {
     if (pole) points += 1;
     if (fastestLap) points += 1;
     
-    return {
-        position: posStr,
-        pole,
-        fastestLap,
-        points
-    };
+    return { position: posStr, pole, fastestLap, points };
 }
 
-// Compile a result string from individual parts
 function compileResultString(position, pole, fastestLap) {
     if (!position || position === 'NONE') return '';
     let res = position;
@@ -257,7 +344,6 @@ function compileResultString(position, pole, fastestLap) {
     return res;
 }
 
-// Calculate standings leaderboard (with official F1 tiebreakers)
 function calculateStandings() {
     const standings = state.drivers.map(driver => {
         let totalPoints = 0;
@@ -265,13 +351,12 @@ function calculateStandings() {
         for (let i = 1; i <= 10; i++) finishCounts[i] = 0;
         
         state.races.forEach(race => {
-            const raceResults = state.results[race] || {};
+            const raceResults = state.results[race.id] || {};
             const driverResult = raceResults[driver.id];
             if (driverResult) {
                 const parsed = parseResult(driverResult);
                 totalPoints += parsed.points;
                 
-                // Track positions for tiebreaking
                 if (/^\d+$/.test(parsed.position)) {
                     const pos = parseInt(parsed.position, 10);
                     if (finishCounts[pos] !== undefined) {
@@ -288,21 +373,15 @@ function calculateStandings() {
         };
     });
     
-    // Sort Standings
     standings.sort((a, b) => {
-        // 1. Total Points (descending)
         if (b.totalPoints !== a.totalPoints) {
             return b.totalPoints - a.totalPoints;
         }
-        
-        // 2. Count of finishes (1st, then 2nd, then 3rd...)
         for (let i = 1; i <= 10; i++) {
             if (b.finishCounts[i] !== a.finishCounts[i]) {
                 return b.finishCounts[i] - a.finishCounts[i];
             }
         }
-        
-        // 3. Alphabetical order
         return a.name.localeCompare(b.name);
     });
     
@@ -313,15 +392,14 @@ function calculateStandings() {
 // UI Rendering
 // ==========================================================================
 
-// Load results for the currently selected race into the activeFormResults temp state
 function loadActiveFormResults() {
     const raceSelect = document.getElementById('post-race-select');
-    const selectedRace = raceSelect.value;
+    const selectedRaceId = raceSelect.value;
     activeFormResults = {};
     
-    if (selectedRace && state.results[selectedRace]) {
+    if (selectedRaceId && state.results[selectedRaceId]) {
         state.drivers.forEach(driver => {
-            const resultStr = state.results[selectedRace][driver.id] || '';
+            const resultStr = state.results[selectedRaceId][driver.id] || '';
             const parsed = parseResult(resultStr);
             activeFormResults[driver.id] = {
                 position: parsed.position || 'NONE',
@@ -340,59 +418,53 @@ function loadActiveFormResults() {
     }
 }
 
-// Render everything
 function renderAll() {
     renderLeaderboard();
     renderSelectors();
     renderResultsEntryForm();
 }
 
-// Render Leaderboard Standings Table
 function renderLeaderboard() {
     const standings = calculateStandings();
     const tableHeaderRow = document.getElementById('leaderboard-headers');
     const tableBody = document.getElementById('leaderboard-body');
     
-    // Clear headers
     tableHeaderRow.innerHTML = `
         <th class="pos-col">#</th>
         <th>Пилот</th>
     `;
     
-    // Add columns for each race
+    // Add columns for each race displaying the emoji flag
     state.races.forEach(race => {
         const th = document.createElement('th');
         th.className = 'race-cell';
-        th.textContent = race;
+        th.textContent = race.emoji || '🏁';
+        th.setAttribute('title', race.name || race.id); // Tooltip on hover
         tableHeaderRow.appendChild(th);
     });
     
-    // Add Points Column header
     const ptsTh = document.createElement('th');
     ptsTh.className = 'points-col';
     ptsTh.textContent = 'Очки';
     tableHeaderRow.appendChild(ptsTh);
     
-    // Clear body
     tableBody.innerHTML = '';
     
     if (standings.length === 0) {
         tableBody.innerHTML = `
             <tr>
                 <td colspan="${state.races.length + 3}" style="text-align: center; color: var(--text-muted); padding: 2rem;">
-                    Нет зарегистрированных пилотов. Войдите в админ-панель, чтобы добавить участников.
+                    Нет зарегистрированных пилотов. Войдите в админ-панель, чтобы внести участников.
                 </td>
             </tr>
         `;
         return;
     }
     
-    // Render rows
     standings.forEach((driver, index) => {
         const row = document.createElement('tr');
         row.className = 'leaderboard-row';
         
-        // Rank
         const rank = index + 1;
         let rankClass = `pos-${rank}`;
         if (rank > 3) rankClass = '';
@@ -402,7 +474,6 @@ function renderLeaderboard() {
         rankTd.textContent = rank;
         row.appendChild(rankTd);
         
-        // Driver Name + Color Strip
         const driverTd = document.createElement('td');
         driverTd.className = 'driver-col';
         
@@ -415,12 +486,11 @@ function renderLeaderboard() {
         `;
         row.appendChild(driverTd);
         
-        // Race Results Cells
         state.races.forEach(race => {
             const td = document.createElement('td');
             td.className = 'race-cell';
             
-            const raceResults = state.results[race] || {};
+            const raceResults = state.results[race.id] || {};
             const resultStr = raceResults[driver.id] || '';
             
             if (resultStr) {
@@ -449,7 +519,6 @@ function renderLeaderboard() {
             row.appendChild(td);
         });
         
-        // Total Points
         const ptsTd = document.createElement('td');
         ptsTd.className = 'points-col';
         ptsTd.textContent = driver.totalPoints;
@@ -459,31 +528,30 @@ function renderLeaderboard() {
     });
 }
 
-// Render dropdown selectors in UI panels
 function renderSelectors() {
     const raceSelect = document.getElementById('post-race-select');
     const deleteRaceSelect = document.getElementById('delete-race-select');
     const deleteDriverSelect = document.getElementById('delete-driver-select');
     
-    const currentSelectedRace = raceSelect.value;
+    const currentSelectedRaceId = raceSelect.value;
     
     // 1. Race post selector
     raceSelect.innerHTML = '';
     state.races.forEach(race => {
         const opt = document.createElement('option');
-        opt.value = race;
-        opt.textContent = race;
+        opt.value = race.id;
+        opt.textContent = `${race.emoji || '🏁'} ${race.name}`;
         raceSelect.appendChild(opt);
     });
     
     // Restore selection or select first
-    if (state.races.includes(currentSelectedRace)) {
-        raceSelect.value = currentSelectedRace;
+    const hasActiveSelection = state.races.some(r => r.id === currentSelectedRaceId);
+    if (hasActiveSelection) {
+        raceSelect.value = currentSelectedRaceId;
     } else if (state.races.length > 0) {
-        raceSelect.value = state.races[0];
+        raceSelect.value = state.races[0].id;
     }
     
-    // Initialize active form results for selected race if empty
     if (Object.keys(activeFormResults).length === 0 && state.races.length > 0) {
         loadActiveFormResults();
     }
@@ -492,8 +560,8 @@ function renderSelectors() {
     deleteRaceSelect.innerHTML = '<option value="" disabled selected>Выберите гонку...</option>';
     state.races.forEach(race => {
         const opt = document.createElement('option');
-        opt.value = race;
-        opt.textContent = race;
+        opt.value = race.id;
+        opt.textContent = `${race.emoji || '🏁'} ${race.name}`;
         deleteRaceSelect.appendChild(opt);
     });
     
@@ -507,15 +575,14 @@ function renderSelectors() {
     });
 }
 
-// Render Results Entry Form list based on current activeFormResults
 function renderResultsEntryForm() {
     const container = document.getElementById('results-entry-container');
     container.innerHTML = '';
     
     const raceSelect = document.getElementById('post-race-select');
-    const selectedRace = raceSelect.value;
+    const selectedRaceId = raceSelect.value;
     
-    if (!selectedRace) {
+    if (!selectedRaceId) {
         container.innerHTML = `
             <div style="text-align: center; color: var(--text-muted); padding: 1.5rem;">
                 Создайте гонку, чтобы вносить результаты.
@@ -536,10 +603,8 @@ function renderResultsEntryForm() {
         const card = document.createElement('div');
         card.className = 'driver-entry-card';
         
-        // Driver Strip color
         const stripColorClass = DRIVER_COLORS[driver.name] || 'strip-default';
         
-        // Build position dropdown options
         let posOptionsHtml = `
             <option value="NONE" ${entry.position === 'NONE' ? 'selected' : ''}>Нет результата</option>
             <option value="DNF" ${entry.position === 'DNF' ? 'selected' : ''}>DNF (Сход)</option>
@@ -568,13 +633,11 @@ function renderResultsEntryForm() {
             </div>
         `;
         
-        // Attach listeners for position selector
         const select = card.querySelector('select');
         select.addEventListener('change', (e) => {
             activeFormResults[driver.id].position = e.target.value;
         });
         
-        // Attach listeners for toggle buttons (P and K)
         const toggleButtons = card.querySelectorAll('.toggle-btn');
         toggleButtons.forEach(btn => {
             btn.addEventListener('click', () => {
@@ -614,7 +677,6 @@ function initUI() {
         if (e.key === 'Enter') attemptLogin();
     });
 
-    // Close modal when clicking overlay (outside the card)
     document.getElementById('login-modal').addEventListener('click', (e) => {
         if (e.target === document.getElementById('login-modal')) {
             closeLoginModal();
@@ -639,13 +701,10 @@ function initUI() {
     document.getElementById('btn-delete-driver').addEventListener('click', deleteDriver);
 
     document.getElementById('btn-add-race').addEventListener('click', addRace);
-    document.getElementById('new-race-name').addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') addRace();
-    });
 
     document.getElementById('btn-delete-race').addEventListener('click', deleteRace);
 
-    // 4. Manual backups
+    // 4. Backups
     document.getElementById('btn-export').addEventListener('click', exportData);
     document.getElementById('btn-import-trigger').addEventListener('click', () => {
         document.getElementById('import-file-input').click();
@@ -654,18 +713,14 @@ function initUI() {
 
     // Reset settings
     document.getElementById('btn-reset').addEventListener('click', resetToDefault);
-
-    // 5. GitHub API credentials preloading & publishing
-    loadGitHubCredentials();
-    document.getElementById('btn-publish-github').addEventListener('click', publishToGitHub);
 }
 
 // Action: Post Results
 function postResults() {
     const raceSelect = document.getElementById('post-race-select');
-    const selectedRace = raceSelect.value;
+    const selectedRaceId = raceSelect.value;
     
-    if (!selectedRace) return;
+    if (!selectedRaceId) return;
     
     // Validation: Check duplicate finishing positions (1-10)
     const positionCounts = {};
@@ -689,30 +744,29 @@ function postResults() {
         }
     }
     
-    if (!state.results[selectedRace]) {
-        state.results[selectedRace] = {};
+    if (!state.results[selectedRaceId]) {
+        state.results[selectedRaceId] = {};
     }
     
     state.drivers.forEach(driver => {
         const formRes = activeFormResults[driver.id];
         if (formRes && formRes.position !== 'NONE') {
-            state.results[selectedRace][driver.id] = compileResultString(
+            state.results[selectedRaceId][driver.id] = compileResultString(
                 formRes.position,
                 formRes.pole,
                 formRes.fastestLap
             );
         } else {
-            delete state.results[selectedRace][driver.id];
+            delete state.results[selectedRaceId][driver.id];
         }
     });
     
     saveState();
-    renderLeaderboard();
     
     // Success Button Animation
     const btn = document.getElementById('btn-post-results');
     const originalText = btn.textContent;
-    btn.textContent = 'Успешно сохранено локально! ✓';
+    btn.textContent = 'Успешно сохранено в Firebase! ✓';
     btn.style.backgroundColor = 'var(--success)';
     btn.style.borderColor = 'var(--success)';
     btn.style.color = '#000000';
@@ -771,8 +825,8 @@ function deleteDriver() {
     if (confirm(`Вы уверены, что хотите удалить пилота "${driverName}"? Все его результаты будут стёрты.`)) {
         state.drivers = state.drivers.filter(d => d.id !== driverId);
         state.races.forEach(race => {
-            if (state.results[race] && state.results[race][driverId]) {
-                delete state.results[race][driverId];
+            if (state.results[race.id] && state.results[race.id][driverId]) {
+                delete state.results[race.id][driverId];
             }
         });
         
@@ -782,54 +836,70 @@ function deleteDriver() {
     }
 }
 
-// Action: Add Race
+// Action: Add Race (with Name + Emoji Flag)
 function addRace() {
     const nameInput = document.getElementById('new-race-name');
-    const raceName = nameInput.value.trim();
+    const emojiInput = document.getElementById('new-race-emoji');
     
-    if (!raceName) {
+    const name = nameInput.value.trim();
+    let emoji = emojiInput.value.trim();
+    
+    if (!name) {
         alert('Название гонки не может быть пустым.');
         return;
     }
     
-    const exists = state.races.some(r => r.toLowerCase() === raceName.toLowerCase());
+    if (!emoji) {
+        emoji = '🏁';
+    }
+    
+    // Generate a unique ID for the race (race_ + timestamp)
+    const raceId = 'race_' + new Date().getTime();
+    
+    const exists = state.races.some(r => r.name.toLowerCase() === name.toLowerCase());
     if (exists) {
         alert('Гонка с таким названием уже существует.');
         return;
     }
     
-    state.races.push(raceName);
-    state.results[raceName] = {};
+    state.races.push({ id: raceId, name: name, emoji: emoji });
+    state.results[raceId] = {};
+    
     saveState();
     
     const raceSelect = document.getElementById('post-race-select');
     renderSelectors();
-    raceSelect.value = raceName;
+    raceSelect.value = raceId;
     
     loadActiveFormResults();
     renderAll();
     
     nameInput.value = '';
+    emojiInput.value = '';
 }
 
 // Action: Delete Race
 function deleteRace() {
     const select = document.getElementById('delete-race-select');
-    const raceName = select.value;
+    const raceId = select.value;
     
-    if (!raceName) {
+    if (!raceId) {
         alert('Пожалуйста, выберите гонку для удаления.');
         return;
     }
     
-    if (confirm(`Вы уверены, что хотите удалить гонку "${raceName}"? Все результаты этой гонки будут безвозвратно удалены.`)) {
-        state.races = state.races.filter(r => r !== raceName);
-        delete state.results[raceName];
+    const raceObject = state.races.find(r => r.id === raceId);
+    const displayName = raceObject ? `${raceObject.emoji} ${raceObject.name}` : raceId;
+    
+    if (confirm(`Вы уверены, что хотите удалить гонку "${displayName}"? Все её результаты будут безвозвратно стёрты.`)) {
+        state.races = state.races.filter(r => r.id !== raceId);
+        delete state.results[raceId];
+        
         saveState();
         
         const raceSelect = document.getElementById('post-race-select');
-        if (raceSelect.value === raceName) {
-            raceSelect.value = state.races.length > 0 ? state.races[0] : '';
+        if (raceSelect.value === raceId) {
+            raceSelect.value = state.races.length > 0 ? state.races[0].id : '';
         }
         
         loadActiveFormResults();
@@ -842,7 +912,7 @@ function exportData() {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state, null, 2));
     const downloadAnchor = document.createElement('a');
     downloadAnchor.setAttribute("href", dataStr);
-    downloadAnchor.setAttribute("download", `database.json`); // Download as database.json directly
+    downloadAnchor.setAttribute("download", `database.json`);
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
@@ -857,19 +927,20 @@ function importData(event) {
     reader.onload = function(e) {
         try {
             const importedState = JSON.parse(e.target.result);
-            if (importedState.drivers && importedState.races && importedState.results) {
-                if (confirm('Вы уверены, что хотите импортировать файл? Это перезапишет текущую базу результатов.')) {
-                    state = importedState;
+            const verifiedState = ensureSchema(importedState);
+            if (verifiedState.drivers && verifiedState.races && verifiedState.results) {
+                if (confirm('Вы уверены, что хотите импортировать файл? Это перезапишет текущую базу результатов в Firebase.')) {
+                    state = verifiedState;
                     saveState();
                     
                     const raceSelect = document.getElementById('post-race-select');
                     if (state.races.length > 0) {
-                        raceSelect.value = state.races[0];
+                        raceSelect.value = state.races[0].id;
                     }
                     
                     loadActiveFormResults();
                     renderAll();
-                    alert('Данные успешно импортированы в локальное хранилище!');
+                    alert('Данные успешно импортированы и сохранены в Firebase!');
                 }
             } else {
                 alert('Ошибка: Файл имеет некорректную структуру F1 Standings.');
@@ -880,126 +951,4 @@ function importData(event) {
     };
     reader.readAsText(file);
     event.target.value = '';
-}
-
-// ==========================================================================
-// GitHub API Auto-Publishing Integration
-// ==========================================================================
-
-// Preload saved GitHub credentials from localStorage
-function loadGitHubCredentials() {
-    document.getElementById('github-user').value = localStorage.getItem('f1_gh_user') || '';
-    document.getElementById('github-repo').value = localStorage.getItem('f1_gh_repo') || '';
-    document.getElementById('github-branch').value = localStorage.getItem('f1_gh_branch') || 'main';
-    document.getElementById('github-token').value = localStorage.getItem('f1_gh_token') || '';
-}
-
-// Save active GitHub credentials to localStorage
-function saveGitHubCredentials() {
-    const user = document.getElementById('github-user').value.trim();
-    const repo = document.getElementById('github-repo').value.trim();
-    const branch = document.getElementById('github-branch').value.trim();
-    const token = document.getElementById('github-token').value.trim();
-
-    localStorage.setItem('f1_gh_user', user);
-    localStorage.setItem('f1_gh_repo', repo);
-    localStorage.setItem('f1_gh_branch', branch);
-    localStorage.setItem('f1_gh_token', token);
-}
-
-// Publish updated state directly to GitHub repository database.json via REST API
-async function publishToGitHub() {
-    const user = document.getElementById('github-user').value.trim();
-    const repo = document.getElementById('github-repo').value.trim();
-    const branch = document.getElementById('github-branch').value.trim();
-    const token = document.getElementById('github-token').value.trim();
-    const statusDiv = document.getElementById('publish-status');
-
-    // Validation
-    if (!user || !repo || !branch || !token) {
-        showPublishStatus('Пожалуйста, заполните все поля для публикации на GitHub (Пользователь, Репозиторий, Ветка и Токен).', 'error');
-        return;
-    }
-
-    // Save inputs locally
-    saveGitHubCredentials();
-
-    showPublishStatus('<div class="status-spinner"></div> Подготовка к публикации на GitHub...', 'pending');
-
-    try {
-        const filePath = 'database.json';
-        const fileUrl = `https://api.github.com/repos/${user}/${repo}/contents/${filePath}`;
-        
-        let sha = null;
-        
-        // Step 1: Check if the file already exists to get its SHA (required by GitHub API for updates)
-        const getFileResponse = await fetch(`${fileUrl}?ref=${branch}`, {
-            headers: {
-                'Authorization': `token ${token}`,
-                'Accept': 'application/vnd.github.v3+json'
-            }
-        });
-
-        if (getFileResponse.ok) {
-            const fileData = await getFileResponse.json();
-            sha = fileData.sha;
-        } else if (getFileResponse.status !== 404) {
-            throw new Error(`Ошибка проверки файла на GitHub (Код: ${getFileResponse.status})`);
-        }
-
-        // Step 2: Encode the state data into UTF-8 Base64
-        const contentStr = JSON.stringify(state, null, 2);
-        
-        // Use TextEncoder to handle Cyrillic/UTF-8 strings properly during base64 conversion
-        const encodedContent = btoa(
-            new TextEncoder().encode(contentStr).reduce((data, byte) => data + String.fromCharCode(byte), '')
-        );
-
-        // Step 3: Put/Update file on GitHub
-        const commitMessage = `Standings update: ${new Date().toLocaleString('ru-RU')}`;
-        const requestBody = {
-            message: commitMessage,
-            content: encodedContent,
-            branch: branch
-        };
-
-        if (sha) {
-            requestBody.sha = sha; // include sha to update file
-        }
-
-        const putResponse = await fetch(fileUrl, {
-            method: 'PUT',
-            headers: {
-                'Authorization': `token ${token}`,
-                'Content-Type': 'application/json',
-                'Accept': 'application/vnd.github.v3+json'
-            },
-            body: JSON.stringify(requestBody)
-        });
-
-        if (putResponse.ok || putResponse.status === 201) {
-            showPublishStatus('🎉 Изменения успешно отправлены на GitHub! Обновление на сайте займет около 1–2 минут.', 'success');
-        } else {
-            const errData = await putResponse.json();
-            throw new Error(errData.message || `Ошибка HTTP: ${putResponse.status}`);
-        }
-
-    } catch (error) {
-        console.error('GitHub API error:', error);
-        showPublishStatus(`❌ Ошибка публикации: ${error.message}. Проверьте правильность введенных токена, имени пользователя и репозитория.`, 'error');
-    }
-}
-
-// Display publishing status messages
-function showPublishStatus(htmlMessage, type) {
-    const statusDiv = document.getElementById('publish-status');
-    statusDiv.innerHTML = htmlMessage;
-    statusDiv.style.display = 'block';
-    
-    // Clear classes
-    statusDiv.className = 'status-msg';
-    
-    if (type === 'success') statusDiv.classList.add('status-success');
-    if (type === 'error') statusDiv.classList.add('status-error');
-    if (type === 'pending') statusDiv.classList.add('status-pending');
 }

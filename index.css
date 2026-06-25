@@ -721,3 +721,47 @@ main {
     100% { transform: rotate(360deg); }
 }
 
+/* ==========================================================================
+   Firebase Status Banner & Warning Indicators
+   ========================================================================== */
+.db-status-banner {
+    width: 100%;
+    padding: 0.6rem 1rem;
+    text-align: center;
+    font-size: 0.85rem;
+    font-weight: 700;
+    font-family: var(--font-orbitron);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    z-index: 999;
+    transition: var(--transition);
+}
+
+.banner-connecting {
+    background-color: var(--warning);
+    color: #000;
+}
+
+.banner-offline {
+    background-color: var(--danger);
+    color: #fff;
+    box-shadow: 0 4px 15px rgba(248, 63, 63, 0.3);
+}
+
+.banner-online {
+    display: none; /* Hide when online to conserve space */
+}
+
+/* Race input row layout */
+.race-input-row {
+    display: flex;
+    gap: 0.5rem;
+}
+
+/* Tooltip cursor for table headers displaying emojis */
+.leaderboard-table th.race-cell {
+    cursor: help;
+    border-bottom: 2px solid var(--border-color);
+}
+
+

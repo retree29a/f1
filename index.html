@@ -3,11 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>F1 League Standings & Results Center</title>
-    <meta name="description" content="Панель результатов и таблица личного зачета чемпионата в стиле Формулы 1. Вносите результаты гонок, считайте очки и управляйте пилотами онлайн.">
+    <title>Result Logger - F1 League Standings</title>
+    <meta name="description" content="Result Logger — панель результатов и таблица личного зачета чемпионата в стиле Формулы 1. Вносите результаты гонок в реальном времени.">
     <link rel="stylesheet" href="index.css">
+    
+    <!-- Firebase SDK (Compat Version) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
 </head>
 <body>
+
+    <!-- Firebase Connection Banner -->
+    <div id="db-status-banner" class="db-status-banner banner-connecting">
+        <span id="db-status-text">Установка соединения с Firebase Realtime Database...</span>
+    </div>
 
     <!-- Header Section -->
     <header>
@@ -15,8 +24,8 @@
             <div class="logo-section">
                 <div class="f1-badge">F1</div>
                 <div class="logo-text">
-                    <h1>Результаты Чемпионата</h1>
-                    <span>Телеметрия & Личный зачет</span>
+                    <h1>Result Logger</h1>
+                    <span>F1 Standings & Results Management</span>
                 </div>
             </div>
             <div class="nav-controls">
@@ -88,7 +97,7 @@
                 </div>
 
                 <button id="btn-post-results" class="btn btn-primary btn-block">
-                    Опубликовать результаты
+                    Сохранить результаты в Firebase
                 </button>
             </section>
 
@@ -122,13 +131,16 @@
 
                 <div class="section-divider"></div>
 
-                <!-- Race Management -->
+                <!-- Race Management with Emoji & Name -->
                 <div class="form-group">
-                    <label for="new-race-name">Добавить гонку</label>
-                    <div class="input-with-button">
-                        <input type="text" id="new-race-name" placeholder="Например: Гонка 3...">
-                        <button id="btn-add-race" class="btn btn-primary">Добавить</button>
+                    <label>Добавить гонку</label>
+                    <div class="race-input-row">
+                        <input type="text" id="new-race-emoji" placeholder="Флаг 🇧🇭" style="flex: 0 0 80px; text-align: center;">
+                        <input type="text" id="new-race-name" placeholder="Название (например: Гран-при Бахрейна)" style="flex: 1;">
                     </div>
+                    <button id="btn-add-race" class="btn btn-primary btn-block" style="margin-top: 0.5rem;">
+                        Добавить гонку
+                    </button>
                 </div>
 
                 <div class="form-group">
@@ -144,54 +156,33 @@
                 </div>
             </section>
 
-            <!-- Backups, Database Tools & GitHub Integration -->
+            <!-- Firebase Connection & Backups Tools -->
             <section class="card" aria-labelledby="db-heading">
                 <div class="card-title">
-                    <h2 id="db-heading">Синхронизация & Бэкапы</h2>
-                    <span>Управление базой данных</span>
+                    <h2 id="db-heading">Синхронизация Firebase</h2>
+                    <span>Статус подключения & Локальные копии</span>
                 </div>
                 
-                <!-- Manual Backups -->
                 <div class="form-group">
-                    <label>Резервное копирование</label>
+                    <label>Активная база данных</label>
+                    <p id="firebase-db-url-text" style="font-size: 0.8rem; word-break: break-all; color: var(--text-muted); font-family: monospace; margin-bottom: 0.5rem;">
+                        Загрузка...
+                    </p>
+                    <div id="firebase-connection-status-badge" class="badge badge-dns">Проверка связи...</div>
+                </div>
+
+                <div class="section-divider"></div>
+
+                <div class="form-group">
+                    <label>Резервные копии (JSON)</label>
                     <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.75rem;">
-                        Скачайте файл с базой результатов для ручного обновления или загрузите бэкап.
+                        Вы можете скачать локальный файл JSON базы данных для архива или восстановить данные из файла.
                     </p>
                     <div class="backup-row">
                         <button id="btn-export" class="btn btn-sm">Экспорт JSON</button>
                         <button id="btn-import-trigger" class="btn btn-sm">Импорт JSON</button>
                         <input type="file" id="import-file-input" class="hidden-file-input" accept=".json">
                     </div>
-                </div>
-
-                <div class="section-divider"></div>
-
-                <!-- GitHub API Publishing -->
-                <div class="form-group">
-                    <label>Публикация в GitHub Pages</label>
-                    <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.75rem;">
-                        Настройте токен и репозиторий, чтобы автоматически обновлять таблицу на сайте одним кликом.
-                    </p>
-                    
-                    <div class="form-group" style="margin-bottom: 0.75rem;">
-                        <input type="text" id="github-user" placeholder="Пользователь GitHub (например: ITam0)" style="font-size: 0.85rem; padding: 0.5rem 0.75rem;">
-                    </div>
-                    <div class="form-group" style="margin-bottom: 0.75rem;">
-                        <input type="text" id="github-repo" placeholder="Название репозитория (например: f1site)" style="font-size: 0.85rem; padding: 0.5rem 0.75rem;">
-                    </div>
-                    <div class="form-group" style="margin-bottom: 0.75rem;">
-                        <input type="text" id="github-branch" placeholder="Ветка (например: main или gh-pages)" style="font-size: 0.85rem; padding: 0.5rem 0.75rem;" value="main">
-                    </div>
-                    <div class="form-group" style="margin-bottom: 1rem;">
-                        <input type="password" id="github-token" placeholder="GitHub Personal Access Token (PAT)" style="font-size: 0.85rem; padding: 0.5rem 0.75rem; width: 100%; background-color: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-main); border-radius: 6px;">
-                    </div>
-
-                    <button id="btn-publish-github" class="btn btn-primary btn-block">
-                        Опубликовать изменения на GitHub
-                    </button>
-                    
-                    <!-- Status message display -->
-                    <div id="publish-status" style="margin-top: 0.75rem; font-size: 0.85rem; display: none;"></div>
                 </div>
             </section>
         </div>
@@ -217,7 +208,7 @@
 
     <!-- Footer -->
     <footer>
-        <p>&copy; 2026 F1 League Manager. Сделано в стиле Формулы-1. Официальный личный зачет.</p>
+        <p>&copy; 2026 Result Logger. Сделано в стиле Формулы-1.</p>
     </footer>
 
     <script src="app.js"></script>
