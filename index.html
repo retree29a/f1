@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>F1 League Standings & Results Center</title>
+    <meta name="description" content="Панель результатов и таблица личного зачета чемпионата в стиле Формулы 1. Вносите результаты гонок, считайте очки и управляйте пилотами онлайн.">
+    <link rel="stylesheet" href="index.css">
+</head>
+<body>
+
+    <!-- Header Section -->
+    <header>
+        <div class="header-container">
+            <div class="logo-section">
+                <div class="f1-badge">F1</div>
+                <div class="logo-text">
+                    <h1>Результаты Чемпионата</h1>
+                    <span>Телеметрия & Личный зачет</span>
+                </div>
+            </div>
+            <div class="nav-controls">
+                <!-- Admin-only Reset button -->
+                <button id="btn-reset" class="btn btn-sm btn-danger admin-only" title="Сбросить все результаты до исходных из Excel">
+                    Сбросить данные
+                </button>
+                <!-- Auth Toggle Button (Login/Logout) -->
+                <button id="btn-auth-toggle" class="btn btn-sm btn-primary">
+                    Войти в админ-панель
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Dashboard Grid -->
+    <main>
+        
+        <!-- Left Column: Leaderboard Standings (Visible to everyone) -->
+        <section class="card" aria-labelledby="leaderboard-heading" id="leaderboard-card">
+            <div class="card-title">
+                <h2 id="leaderboard-heading">Таблица Личного Зачета</h2>
+                <span>Автоматический подсчет очков и тайбрейков</span>
+            </div>
+            
+            <div class="scroll-hint">Прокрутите вправо, чтобы увидеть все гонки →</div>
+            
+            <div class="leaderboard-table-container">
+                <table class="leaderboard-table" id="leaderboard-table">
+                    <thead>
+                        <tr id="leaderboard-headers">
+                            <th class="pos-col">#</th>
+                            <th>Пилот</th>
+                            <!-- Dynamic race headers will go here -->
+                            <th class="points-col">Очки</th>
+                        </tr>
+                    </thead>
+                    <tbody id="leaderboard-body">
+                        <!-- Dynamic standings rows will go here -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Right Column: Control Panels (Visible ONLY to Admin) -->
+        <div class="management-panels admin-only" id="admin-panels">
+            
+            <!-- Race Results Post Center -->
+            <section class="card" aria-labelledby="post-heading">
+                <div class="card-title">
+                    <h2 id="post-heading">Внести Результаты</h2>
+                    <span>Центр отправки результатов гонок</span>
+                </div>
+                
+                <div class="form-group">
+                    <label for="post-race-select">Выберите гонку</label>
+                    <div class="select-wrapper">
+                        <select id="post-race-select">
+                            <!-- Dynamic race options -->
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Результаты пилотов</label>
+                    <div id="results-entry-container" class="results-entry-list">
+                        <!-- Dynamic list of drivers with position dropdowns and toggles -->
+                    </div>
+                </div>
+
+                <button id="btn-post-results" class="btn btn-primary btn-block">
+                    Опубликовать результаты
+                </button>
+            </section>
+
+            <!-- Driver & Race Administration -->
+            <section class="card" aria-labelledby="admin-heading">
+                <div class="card-title">
+                    <h2 id="admin-heading">Управление Лигой</h2>
+                    <span>Редактирование участников и этапов</span>
+                </div>
+
+                <!-- Driver Management -->
+                <div class="form-group">
+                    <label for="new-driver-name">Добавить пилота</label>
+                    <div class="input-with-button">
+                        <input type="text" id="new-driver-name" placeholder="Имя нового пилота...">
+                        <button id="btn-add-driver" class="btn btn-primary">Добавить</button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="delete-driver-select">Удалить пилота</label>
+                    <div class="input-with-button">
+                        <div class="select-wrapper" style="flex-grow: 1;">
+                            <select id="delete-driver-select">
+                                <option value="" disabled selected>Выберите пилота...</option>
+                            </select>
+                        </div>
+                        <button id="btn-delete-driver" class="btn btn-danger">Удалить</button>
+                    </div>
+                </div>
+
+                <div class="section-divider"></div>
+
+                <!-- Race Management -->
+                <div class="form-group">
+                    <label for="new-race-name">Добавить гонку</label>
+                    <div class="input-with-button">
+                        <input type="text" id="new-race-name" placeholder="Например: Гонка 3...">
+                        <button id="btn-add-race" class="btn btn-primary">Добавить</button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="delete-race-select">Удалить гонку</label>
+                    <div class="input-with-button">
+                        <div class="select-wrapper" style="flex-grow: 1;">
+                            <select id="delete-race-select">
+                                <option value="" disabled selected>Выберите гонку...</option>
+                            </select>
+                        </div>
+                        <button id="btn-delete-race" class="btn btn-danger">Удалить</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Backups, Database Tools & GitHub Integration -->
+            <section class="card" aria-labelledby="db-heading">
+                <div class="card-title">
+                    <h2 id="db-heading">Синхронизация & Бэкапы</h2>
+                    <span>Управление базой данных</span>
+                </div>
+                
+                <!-- Manual Backups -->
+                <div class="form-group">
+                    <label>Резервное копирование</label>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.75rem;">
+                        Скачайте файл с базой результатов для ручного обновления или загрузите бэкап.
+                    </p>
+                    <div class="backup-row">
+                        <button id="btn-export" class="btn btn-sm">Экспорт JSON</button>
+                        <button id="btn-import-trigger" class="btn btn-sm">Импорт JSON</button>
+                        <input type="file" id="import-file-input" class="hidden-file-input" accept=".json">
+                    </div>
+                </div>
+
+                <div class="section-divider"></div>
+
+                <!-- GitHub API Publishing -->
+                <div class="form-group">
+                    <label>Публикация в GitHub Pages</label>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.75rem;">
+                        Настройте токен и репозиторий, чтобы автоматически обновлять таблицу на сайте одним кликом.
+                    </p>
+                    
+                    <div class="form-group" style="margin-bottom: 0.75rem;">
+                        <input type="text" id="github-user" placeholder="Пользователь GitHub (например: ITam0)" style="font-size: 0.85rem; padding: 0.5rem 0.75rem;">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0.75rem;">
+                        <input type="text" id="github-repo" placeholder="Название репозитория (например: f1site)" style="font-size: 0.85rem; padding: 0.5rem 0.75rem;">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0.75rem;">
+                        <input type="text" id="github-branch" placeholder="Ветка (например: main или gh-pages)" style="font-size: 0.85rem; padding: 0.5rem 0.75rem;" value="main">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 1rem;">
+                        <input type="password" id="github-token" placeholder="GitHub Personal Access Token (PAT)" style="font-size: 0.85rem; padding: 0.5rem 0.75rem; width: 100%; background-color: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-main); border-radius: 6px;">
+                    </div>
+
+                    <button id="btn-publish-github" class="btn btn-primary btn-block">
+                        Опубликовать изменения на GitHub
+                    </button>
+                    
+                    <!-- Status message display -->
+                    <div id="publish-status" style="margin-top: 0.75rem; font-size: 0.85rem; display: none;"></div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Admin Login Modal -->
+    <div id="login-modal" class="modal-overlay">
+        <div class="modal-card">
+            <div class="modal-title">
+                <h3>Вход в админ-панель</h3>
+            </div>
+            <div class="form-group">
+                <label for="admin-password">Пароль администратора</label>
+                <input type="password" id="admin-password" placeholder="Введите пароль...">
+                <div id="login-error" class="login-error-msg">Неверный пароль. Попробуйте еще раз.</div>
+            </div>
+            <div class="modal-actions">
+                <button id="btn-login-cancel" class="btn">Отмена</button>
+                <button id="btn-login-submit" class="btn btn-primary">Войти</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer>
+        <p>&copy; 2026 F1 League Manager. Сделано в стиле Формулы-1. Официальный личный зачет.</p>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>
