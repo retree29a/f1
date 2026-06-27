@@ -610,9 +610,15 @@ function renderLeaderboard() {
             badgeHtml = entity.teamTag ? `<span class="team-tag-badge" style="--team-color: ${stripColor}" title="${entity.team || ''}">${entity.teamTag}</span>` : '';
         }
         
+        let numberHtml = '';
+        if (!isConstructors && entity.number) {
+            numberHtml = `<span style="color: var(--text-muted); font-family: var(--font-orbitron); font-size: 0.8rem; margin-right: 0.2rem;">${entity.number}</span>`;
+        }
+        
         entityTd.innerHTML = `
             <div class="driver-cell-container">
                 <div class="driver-strip" style="background-color: ${stripColor}"></div>
+                ${numberHtml}
                 <span>${entity.name}</span>
                 ${badgeHtml}
             </div>
@@ -890,6 +896,8 @@ function initUI() {
             const driver = state.drivers.find(d => d.id === driverId);
             
             if (driver) {
+                const editNumInput = document.getElementById('edit-driver-number');
+                if (editNumInput) editNumInput.value = driver.number || '';
                 document.getElementById('edit-driver-name').value = driver.name;
                 document.getElementById('edit-driver-team').value = driver.team || '';
                 document.getElementById('edit-driver-tag').value = driver.teamTag || '';
@@ -988,11 +996,13 @@ function postResults() {
 // Action: Add Driver
 function addDriver() {
     const nameInput = document.getElementById('new-driver-name');
+    const numberInput = document.getElementById('new-driver-number');
     const teamInput = document.getElementById('new-driver-team');
     const tagInput = document.getElementById('new-driver-tag');
     const colorInput = document.getElementById('new-driver-color');
     
     const name = nameInput.value.trim();
+    const number = numberInput ? numberInput.value.trim() : '';
     const team = teamInput.value.trim();
     const teamTag = tagInput.value.trim().toUpperCase();
     const color = colorInput.value;
@@ -1012,6 +1022,7 @@ function addDriver() {
     state.drivers.push({
         id: driverId,
         name: name,
+        number: number,
         team: team,
         teamTag: teamTag,
         color: color
@@ -1022,6 +1033,7 @@ function addDriver() {
     renderAll();
     
     nameInput.value = '';
+    if (numberInput) numberInput.value = '';
     teamInput.value = '';
     tagInput.value = '';
     // Color picker stays at current value
@@ -1063,11 +1075,13 @@ function saveDriverEdit() {
     }
     
     const nameInput = document.getElementById('edit-driver-name');
+    const numberInput = document.getElementById('edit-driver-number');
     const teamInput = document.getElementById('edit-driver-team');
     const tagInput = document.getElementById('edit-driver-tag');
     const colorInput = document.getElementById('edit-driver-color');
     
     const newName = nameInput.value.trim();
+    const number = numberInput ? numberInput.value.trim() : '';
     const team = teamInput.value.trim();
     const teamTag = tagInput.value.trim().toUpperCase();
     const color = colorInput.value;
@@ -1094,6 +1108,7 @@ function saveDriverEdit() {
     state.drivers[driverIndex] = {
         id: newName,
         name: newName,
+        number: number,
         team: team,
         teamTag: teamTag,
         color: color
