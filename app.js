@@ -582,8 +582,10 @@ function renderSelectors() {
     const raceSelect = document.getElementById('post-race-select');
     const deleteRaceSelect = document.getElementById('delete-race-select');
     const deleteDriverSelect = document.getElementById('delete-driver-select');
+    const editDriverSelect = document.getElementById('edit-driver-select');
     
     const currentSelectedRaceId = raceSelect.value;
+    const currentEditDriverId = editDriverSelect ? editDriverSelect.value : '';
     
     // 1. Race post selector
     raceSelect.innerHTML = '';
@@ -623,6 +625,20 @@ function renderSelectors() {
         opt.textContent = driver.name;
         deleteDriverSelect.appendChild(opt);
     });
+
+    // 4. Driver edit selector
+    if (editDriverSelect) {
+        editDriverSelect.innerHTML = '<option value="" disabled selected>Выберите пилота для редактирования...</option>';
+        state.drivers.forEach(driver => {
+            const opt = document.createElement('option');
+            opt.value = driver.id;
+            opt.textContent = driver.name;
+            editDriverSelect.appendChild(opt);
+        });
+        if (state.drivers.some(d => d.id === currentEditDriverId)) {
+            editDriverSelect.value = currentEditDriverId;
+        }
+    }
 }
 
 function renderResultsEntryForm() {
@@ -742,13 +758,38 @@ function initUI() {
 
     document.getElementById('btn-post-results').addEventListener('click', postResults);
 
-    // 3. Admin Panel controls (Add/Delete Drivers/Races)
+    // 3. Admin Panel controls (Add/Delete/Edit Drivers/Races)
     document.getElementById('btn-add-driver').addEventListener('click', addDriver);
     document.getElementById('new-driver-name').addEventListener('keypress', (e) => {
         if (e.key === 'Enter') addDriver();
     });
 
     document.getElementById('btn-delete-driver').addEventListener('click', deleteDriver);
+
+    // Edit Driver listeners
+    const editSelect = document.getElementById('edit-driver-select');
+    const editFields = document.getElementById('edit-driver-fields');
+    if (editSelect && editFields) {
+        editSelect.addEventListener('change', () => {
+            const driverId = editSelect.value;
+            const driver = state.drivers.find(d => d.id === driverId);
+            
+            if (driver) {
+                document.getElementById('edit-driver-name').value = driver.name;
+                document.getElementById('edit-driver-team').value = driver.team || '';
+                document.getElementById('edit-driver-tag').value = driver.teamTag || '';
+                document.getElementById('edit-driver-color').value = driver.color || '#94a3b8';
+                editFields.style.display = 'block';
+            } else {
+                editFields.style.display = 'none';
+            }
+        });
+    }
+
+    const btnEditSave = document.getElementById('btn-edit-driver-save');
+    if (btnEditSave) {
+        btnEditSave.addEventListener('click', saveDriverEdit);
+    }
 
     document.getElementById('btn-add-race').addEventListener('click', addRace);
 
@@ -894,6 +935,78 @@ function deleteDriver() {
         loadActiveFormResults();
         renderAll();
     }
+}
+
+// Action: Save Driver Edit
+function saveDriverEdit() {
+    const select = document.getElementById('edit-driver-select');
+    const oldId = select.value;
+    
+    if (!oldId) {
+        alert('Пожалуйста, выберите пилота для редактирования.');
+        return;
+    }
+    
+    const nameInput = document.getElementById('edit-driver-name');
+    const teamInput = document.getElementById('edit-driver-team');
+    const tagInput = document.getElementById('edit-driver-tag');
+    const colorInput = document.getElementById('edit-driver-color');
+    
+    const newName = nameInput.value.trim();
+    const team = teamInput.value.trim();
+    const teamTag = tagInput.value.trim().toUpperCase();
+    const color = colorInput.value;
+    
+    if (!newName) {
+        alert('Имя пилота не может быть пустым.');
+        return;
+    }
+    
+    // Verify name uniqueness (except when keeping the same name)
+    if (newName.toLowerCase() !== oldId.toLowerCase()) {
+        const exists = state.drivers.some(d => d.name.toLowerCase() === newName.toLowerCase());
+        if (exists) {
+            alert('Пилот с таким именем уже существует.');
+            return;
+        }
+    }
+    
+    // 1. Update the driver details inside state
+    const driverIndex = state.drivers.findIndex(d => d.id === oldId);
+    if (driverIndex === -1) return;
+    
+    // Replace/update the driver object
+    state.drivers[driverIndex] = {
+        id: newName,
+        name: newName,
+        team: team,
+        teamTag: teamTag,
+        color: color
+    };
+    
+    // 2. Migrate results key if name/ID changed!
+    if (newName !== oldId) {
+        state.races.forEach(race => {
+            if (state.results[race.id] && state.results[race.id][oldId] !== undefined) {
+                state.results[race.id][newName] = state.results[race.id][oldId];
+                delete state.results[race.id][oldId];
+            }
+        });
+        
+        // Update DRIVER_COLORS preset dynamically if they want, but color is inside object now.
+        // We'll update the active form results key if needed, or simply let loadActiveFormResults() handle it
+    }
+    
+    saveState();
+    
+    // Reset and collapse form
+    document.getElementById('edit-driver-fields').style.display = 'none';
+    select.value = '';
+    
+    loadActiveFormResults();
+    renderAll();
+    
+    alert('Данные пилота успешно сохранены!');
 }
 
 // Action: Add Race (with Name + Emoji Flag)
