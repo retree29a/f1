@@ -480,11 +480,16 @@ function renderLeaderboard() {
         <th>Пилот</th>
     `;
     
-    // Add columns for each race displaying the emoji flag
+    // Add columns for each race displaying the emoji flag and name
     state.races.forEach(race => {
         const th = document.createElement('th');
         th.className = 'race-cell';
-        th.textContent = race.emoji || '🏁';
+        th.innerHTML = `
+            <div class="race-header-content">
+                <span class="race-header-emoji">${race.emoji || '🏁'}</span>
+                <span class="race-header-name">${race.name || race.id}</span>
+            </div>
+        `;
         th.setAttribute('title', race.name || race.id); // Tooltip on hover
         tableHeaderRow.appendChild(th);
     });

@@ -246,7 +246,32 @@ main {
     text-align: center;
     font-size: 0.9rem;
     font-family: var(--font-orbitron);
-    min-width: 65px;
+    min-width: 80px;
+}
+
+.race-header-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+}
+
+.race-header-emoji {
+    font-size: 1.15rem;
+    line-height: 1;
+}
+
+.race-header-name {
+    font-family: var(--font-orbitron);
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    max-width: 75px;
 }
 
 .points-col {
