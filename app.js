@@ -248,6 +248,7 @@ function ensureSchema(dataObj) {
         return {
             id: id,
             name: name,
+            number: driver.number || '',
             color: color,
             team: driver.team || '',
             teamTag: driver.teamTag || ''
