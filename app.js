@@ -66,6 +66,7 @@ const ADMIN_PASSWORD_HASH = "19b32eb6c57fd5dfcebaa150ebe11b82f2d8645ebb52a51c313
 const FIREBASE_DB_URL = "https://f1lc-afbbc-default-rtdb.asia-southeast1.firebasedatabase.app/";
 
 // Application State
+let currentViewMode = 'individual';
 let state = {
     drivers: [],
     races: [],
@@ -434,6 +435,77 @@ function calculateStandings() {
     return standings;
 }
 
+function calculateConstructorsStandings() {
+    const teams = {};
+    
+    // 1. Group drivers by team
+    state.drivers.forEach(driver => {
+        if (!driver.team) return; // Skip drivers without a team
+        
+        const teamName = driver.team.trim();
+        if (!teamName) return;
+        
+        if (!teams[teamName]) {
+            teams[teamName] = {
+                id: teamName,
+                name: teamName,
+                tag: driver.teamTag || '',
+                color: driver.color || '#94a3b8',
+                drivers: [],
+                totalPoints: 0,
+                finishCounts: {},
+                racePoints: {}
+            };
+            for (let i = 1; i <= 10; i++) teams[teamName].finishCounts[i] = 0;
+        }
+        
+        teams[teamName].drivers.push(driver.id);
+    });
+    
+    // 2. Calculate points per team
+    const teamList = Object.values(teams);
+    
+    teamList.forEach(team => {
+        state.races.forEach(race => {
+            const raceResults = state.results[race.id] || {};
+            let raceTeamPoints = 0;
+            
+            team.drivers.forEach(driverId => {
+                const driverResult = raceResults[driverId];
+                if (driverResult) {
+                    const parsed = parseResult(driverResult);
+                    raceTeamPoints += parsed.points;
+                    
+                    if (/^\d+$/.test(parsed.position)) {
+                        const pos = parseInt(parsed.position, 10);
+                        if (team.finishCounts[pos] !== undefined) {
+                            team.finishCounts[pos]++;
+                        }
+                    }
+                }
+            });
+            
+            team.racePoints[race.id] = raceTeamPoints;
+            team.totalPoints += raceTeamPoints;
+        });
+    });
+    
+    // 3. Sort teams
+    teamList.sort((a, b) => {
+        if (b.totalPoints !== a.totalPoints) {
+            return b.totalPoints - a.totalPoints;
+        }
+        for (let i = 1; i <= 10; i++) {
+            if (b.finishCounts[i] !== a.finishCounts[i]) {
+                return b.finishCounts[i] - a.finishCounts[i];
+            }
+        }
+        return a.name.localeCompare(b.name);
+    });
+    
+    return teamList;
+}
+
 // ==========================================================================
 // UI Rendering
 // ==========================================================================
@@ -471,13 +543,15 @@ function renderAll() {
 }
 
 function renderLeaderboard() {
-    const standings = calculateStandings();
+    const isConstructors = currentViewMode === 'constructors';
+    const standings = isConstructors ? calculateConstructorsStandings() : calculateStandings();
+    
     const tableHeaderRow = document.getElementById('leaderboard-headers');
     const tableBody = document.getElementById('leaderboard-body');
     
     tableHeaderRow.innerHTML = `
         <th class="pos-col">#</th>
-        <th>Пилот</th>
+        <th>${isConstructors ? 'Команда' : 'Пилот'}</th>
     `;
     
     // Add columns for each race displaying the emoji flag and name
@@ -512,7 +586,7 @@ function renderLeaderboard() {
         return;
     }
     
-    standings.forEach((driver, index) => {
+    standings.forEach((entity, index) => {
         const row = document.createElement('tr');
         row.className = 'leaderboard-row';
         
@@ -525,50 +599,63 @@ function renderLeaderboard() {
         rankTd.textContent = rank;
         row.appendChild(rankTd);
         
-        const driverTd = document.createElement('td');
-        driverTd.className = 'driver-col';
+        const entityTd = document.createElement('td');
+        entityTd.className = 'driver-col';
         
-        const stripColor = driver.color || '#94a3b8';
-        const teamTagHtml = driver.teamTag ? 
-            `<span class="team-tag-badge" style="--team-color: ${stripColor}" title="${driver.team || ''}">${driver.teamTag}</span>` : '';
+        const stripColor = entity.color || '#94a3b8';
+        let badgeHtml = '';
+        if (isConstructors) {
+            badgeHtml = entity.tag ? `<span class="team-tag-badge" style="--team-color: ${stripColor}">${entity.tag}</span>` : '';
+        } else {
+            badgeHtml = entity.teamTag ? `<span class="team-tag-badge" style="--team-color: ${stripColor}" title="${entity.team || ''}">${entity.teamTag}</span>` : '';
+        }
         
-        driverTd.innerHTML = `
+        entityTd.innerHTML = `
             <div class="driver-cell-container">
                 <div class="driver-strip" style="background-color: ${stripColor}"></div>
-                <span>${driver.name}</span>
-                ${teamTagHtml}
+                <span>${entity.name}</span>
+                ${badgeHtml}
             </div>
         `;
-        row.appendChild(driverTd);
+        row.appendChild(entityTd);
         
         state.races.forEach(race => {
             const td = document.createElement('td');
             td.className = 'race-cell';
             
-            const raceResults = state.results[race.id] || {};
-            const resultStr = raceResults[driver.id] || '';
-            
-            if (resultStr) {
-                const parsed = parseResult(resultStr);
-                let badgeClass = 'badge-pts';
-                let textToShow = parsed.position;
-                
-                if (parsed.position === '1') badgeClass = 'badge-p1';
-                else if (parsed.position === '2') badgeClass = 'badge-p2';
-                else if (parsed.position === '3') badgeClass = 'badge-p3';
-                else if (parsed.position === 'DSQ') { badgeClass = 'badge-dsq'; textToShow = 'DSQ'; }
-                else if (parsed.position === 'DNF') { badgeClass = 'badge-dnf'; textToShow = 'DNF'; }
-                else if (parsed.position === 'DNS') { badgeClass = 'badge-dns'; textToShow = 'DNS'; }
-                
-                let modifiersHtml = '';
-                if (parsed.pole) modifiersHtml += `<span class="mod-indicator mod-p" title="Поул-позиция">П</span>`;
-                if (parsed.fastestLap) modifiersHtml += `<span class="mod-indicator mod-k" title="Быстрый круг">К</span>`;
-                
-                td.innerHTML = `
-                    <span class="badge ${badgeClass}">${textToShow}</span>${modifiersHtml}
-                `;
+            if (isConstructors) {
+                const pts = entity.racePoints[race.id];
+                if (pts !== undefined && pts > 0) {
+                    td.innerHTML = `<span class="badge badge-pts">${pts}</span>`;
+                } else {
+                    td.innerHTML = `<span style="color: var(--border-color);">-</span>`;
+                }
             } else {
-                td.innerHTML = `<span style="color: var(--border-color);">-</span>`;
+                const raceResults = state.results[race.id] || {};
+                const resultStr = raceResults[entity.id] || '';
+                
+                if (resultStr) {
+                    const parsed = parseResult(resultStr);
+                    let badgeClass = 'badge-pts';
+                    let textToShow = parsed.position;
+                    
+                    if (parsed.position === '1') badgeClass = 'badge-p1';
+                    else if (parsed.position === '2') badgeClass = 'badge-p2';
+                    else if (parsed.position === '3') badgeClass = 'badge-p3';
+                    else if (parsed.position === 'DSQ') { badgeClass = 'badge-dsq'; textToShow = 'DSQ'; }
+                    else if (parsed.position === 'DNF') { badgeClass = 'badge-dnf'; textToShow = 'DNF'; }
+                    else if (parsed.position === 'DNS') { badgeClass = 'badge-dns'; textToShow = 'DNS'; }
+                    
+                    let modifiersHtml = '';
+                    if (parsed.pole) modifiersHtml += `<span class="mod-indicator mod-p" title="Поул-позиция">П</span>`;
+                    if (parsed.fastestLap) modifiersHtml += `<span class="mod-indicator mod-k" title="Быстрый круг">К</span>`;
+                    
+                    td.innerHTML = `
+                        <span class="badge ${badgeClass}">${textToShow}</span>${modifiersHtml}
+                    `;
+                } else {
+                    td.innerHTML = `<span style="color: var(--border-color);">-</span>`;
+                }
             }
             
             row.appendChild(td);
@@ -576,7 +663,7 @@ function renderLeaderboard() {
         
         const ptsTd = document.createElement('td');
         ptsTd.className = 'points-col';
-        ptsTd.textContent = driver.totalPoints;
+        ptsTd.textContent = entity.totalPoints;
         row.appendChild(ptsTd);
         
         tableBody.appendChild(row);
@@ -732,6 +819,29 @@ function renderResultsEntryForm() {
 // ==========================================================================
 
 function initUI() {
+    // 0. Championship Toggle
+    const btnIndividual = document.getElementById('btn-champ-individual');
+    const btnConstructors = document.getElementById('btn-champ-constructors');
+    const leaderboardHeading = document.getElementById('leaderboard-heading');
+    
+    if (btnIndividual && btnConstructors) {
+        btnIndividual.addEventListener('click', () => {
+            currentViewMode = 'individual';
+            btnIndividual.classList.add('active');
+            btnConstructors.classList.remove('active');
+            leaderboardHeading.textContent = 'Таблица Личного Зачета';
+            renderLeaderboard();
+        });
+        
+        btnConstructors.addEventListener('click', () => {
+            currentViewMode = 'constructors';
+            btnConstructors.classList.add('active');
+            btnIndividual.classList.remove('active');
+            leaderboardHeading.textContent = 'Кубок Конструкторов';
+            renderLeaderboard();
+        });
+    }
+
     // 1. Auth bindings
     document.getElementById('btn-auth-toggle').addEventListener('click', () => {
         const loggedIn = sessionStorage.getItem('f1_admin_logged_in') === 'true';

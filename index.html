@@ -46,9 +46,15 @@
         
         <!-- Left Column: Leaderboard Standings (Visible to everyone) -->
         <section class="card" aria-labelledby="leaderboard-heading" id="leaderboard-card">
-            <div class="card-title">
-                <h2 id="leaderboard-heading">Таблица Личного Зачета</h2>
-                <span>Автоматический подсчет очков и тайбрейков</span>
+            <div class="card-title" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                <div>
+                    <h2 id="leaderboard-heading">Таблица Личного Зачета</h2>
+                    <span id="leaderboard-subheading">Автоматический подсчет очков и тайбрейков</span>
+                </div>
+                <div class="championship-toggle">
+                    <button id="btn-champ-individual" class="btn active">Личный Зачет</button>
+                    <button id="btn-champ-constructors" class="btn">Кубок Конструкторов</button>
+                </div>
             </div>
             
             <div class="scroll-hint">Прокрутите вправо, чтобы увидеть все гонки →</div>
