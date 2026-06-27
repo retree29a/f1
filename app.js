@@ -613,7 +613,7 @@ function renderLeaderboard() {
         
         let numberHtml = '';
         if (!isConstructors && entity.number) {
-            numberHtml = `<span style="color: var(--text-muted); font-family: var(--font-orbitron); font-size: 0.8rem; margin-right: 0.2rem;">${entity.number}</span>`;
+            numberHtml = `<span style="margin-right: 0.4rem;">${entity.number}</span>`;
         }
         
         entityTd.innerHTML = `
